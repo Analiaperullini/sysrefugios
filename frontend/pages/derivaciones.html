@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Derivaciones</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <header id="encabezado" class="encabezado"></header>
+
+    <main class="contenedor">
+        <div class="barra-herramientas">
+            <h1>Derivaciones entre organizaciones</h1>
+            <button id="boton-nuevo" class="boton" type="button">Nueva derivación</button>
+        </div>
+        <p class="subtitulo">
+            Registra el paso de un animal de una organización a la otra cuando no hay espacio disponible.
+            La derivación es directa (no requiere aceptación): al guardarla, el animal queda
+            asociado a la organización de destino.
+        </p>
+
+        <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+        <div id="mensaje-exito" class="alerta alerta-exito" hidden></div>
+
+        <section id="tarjeta-formulario" class="tarjeta" hidden>
+            <h2 id="titulo-formulario" style="margin-top:0;">Nueva derivación</h2>
+            <form id="formulario-derivacion">
+                <input type="hidden" id="derivacionId">
+                <div class="campo">
+                    <label for="animalId">Animal *</label>
+                    <select id="animalId" required></select>
+                </div>
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="organizacionOrigenId">Organización de origen *</label>
+                        <select id="organizacionOrigenId" required></select>
+                    </div>
+                    <div class="campo">
+                        <label for="organizacionDestinoId">Organización de destino *</label>
+                        <select id="organizacionDestinoId" required></select>
+                    </div>
+                </div>
+                <div id="aviso-rn03" class="alerta alerta-aviso" hidden></div>
+                <div id="advertencia-destino" class="alerta alerta-error" hidden></div>
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="fecha">Fecha *</label>
+                        <input type="date" id="fecha" required>
+                    </div>
+                    <div class="campo">
+                        <label for="motivo">Motivo *</label>
+                        <input type="text" id="motivo" placeholder="Ej.: sin espacio de tránsito" required>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label for="observaciones">Observaciones</label>
+                    <textarea id="observaciones"></textarea>
+                </div>
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Guardar</button>
+                    <button type="button" id="boton-cancelar" class="boton boton-secundario">Cancelar</button>
+                </div>
+            </form>
+        </section>
+
+        <div class="tarjeta">
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Animal</th>
+                            <th>Origen</th>
+                            <th>Destino</th>
+                            <th>Fecha</th>
+                            <th>Motivo</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-tabla"></tbody>
+                </table>
+                <p id="tabla-vacia" class="vacio" hidden>No hay derivaciones registradas todavía.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/etiquetas.js"></script>
+    <script>
+        const sesion = inicializarPagina("derivaciones.html");
+        let animales = [];
+        let organizaciones = [];
+
+        if (sesion) {
+            iniciar();
+        }
+
+        async function iniciar() {
+            await Promise.all([cargarAnimales(), cargarOrganizaciones()]);
+            await cargarTabla();
+        }
+
+        async function cargarAnimales() {
+            animales = await api.get(`/animales?organizacionId=${sesion.organizacionId}`);
+            document.getElementById("animalId").innerHTML = animales
+                .map((a) => `<option value="${a.id}">${escaparHtml(a.nombre)} (${escaparHtml(a.organizacionNombre)})</option>`)
+                .join("");
+        }
+
+        async function cargarOrganizaciones() {
+            organizaciones = await api.get("/organizaciones");
+            const opciones = organizaciones
+                .map((o) => `<option value="${o.id}">${escaparHtml(o.nombre)}</option>`)
+                .join("");
+            document.getElementById("organizacionOrigenId").innerHTML = opciones;
+            document.getElementById("organizacionDestinoId").innerHTML = opciones;
+        }
+
+        function animalElegido() {
+            return animales.find((a) => a.id === Number(document.getElementById("animalId").value));
+        }
+
+        function destinoPropuesto(animal) {
+            const otras = organizaciones.filter((o) => o.id !== animal.organizacionId);
+            return otras.find((o) => o.etapaVidaAtendida === animal.etapaVida)
+                ?? otras.find((o) => !o.etapaVidaAtendida)
+                ?? null;
+        }
+
+        function proponerDestino() {
+            const animal = animalElegido();
+            const aviso = document.getElementById("aviso-rn03");
+            if (!animal) {
+                aviso.hidden = true;
+                revisarDestino();
+                return;
+            }
+            document.getElementById("organizacionOrigenId").value = animal.organizacionId;
+            const propuesto = destinoPropuesto(animal);
+            if (propuesto) {
+                document.getElementById("organizacionDestinoId").value = propuesto.id;
+            }
+            const etapa = etiqueta(ETAPAS_VIDA, animal.etapaVida).toLowerCase();
+            aviso.textContent = propuesto
+                ? `RN-03: ${animal.nombre} es ${etapa}. Se propone ${propuesto.nombre}, que atiende ${propuesto.etapaVidaAtendida ? `${etapa}s` : "todas las etapas de vida"}.`
+                : `RN-03: ${animal.nombre} es ${etapa} y no hay otra organización que atienda esa etapa de vida.`;
+            aviso.hidden = false;
+            revisarDestino();
+        }
+
+        function revisarDestino() {
+            const advertencia = document.getElementById("advertencia-destino");
+            const animal = animalElegido();
+            const destino = organizaciones.find((o) => o.id === Number(document.getElementById("organizacionDestinoId").value));
+            advertencia.hidden = true;
+            if (!animal || !destino || document.getElementById("derivacionId").value) {
+                return;
+            }
+            const etapa = etiqueta(ETAPAS_VIDA, animal.etapaVida).toLowerCase();
+            if (destino.id === animal.organizacionId) {
+                advertencia.textContent = `${animal.nombre} ya está a cargo de ${destino.nombre}: elegí otra organización de destino.`;
+                advertencia.hidden = false;
+            } else if (destino.etapaVidaAtendida && destino.etapaVidaAtendida !== animal.etapaVida) {
+                const propuesto = destinoPropuesto(animal);
+                advertencia.textContent = `Atención: ${destino.nombre} atiende ${etiqueta(ETAPAS_VIDA, destino.etapaVidaAtendida).toLowerCase()}s y ${animal.nombre} es ${etapa}.`
+                    + (propuesto ? ` Según RN-03 corresponde derivarlo a ${propuesto.nombre}.` : "")
+                    + " Podés registrar la derivación igual si hay un motivo.";
+                advertencia.hidden = false;
+            }
+        }
+
+        document.getElementById("animalId").addEventListener("change", proponerDestino);
+        document.getElementById("organizacionDestinoId").addEventListener("change", revisarDestino);
+
+        async function cargarTabla() {
+            try {
+                const derivaciones = await api.get("/derivaciones");
+                const cuerpo = document.getElementById("cuerpo-tabla");
+                const vacio = document.getElementById("tabla-vacia");
+
+                if (derivaciones.length === 0) {
+                    cuerpo.innerHTML = "";
+                    vacio.hidden = false;
+                    return;
+                }
+                vacio.hidden = true;
+
+                cuerpo.innerHTML = derivaciones
+                    .map(
+                        (d) => `
+                    <tr>
+                        <td>${escaparHtml(d.animalNombre)}</td>
+                        <td>${escaparHtml(d.organizacionOrigenNombre)}</td>
+                        <td>${escaparHtml(d.organizacionDestinoNombre)}</td>
+                        <td>${formatearFecha(d.fechaDerivacion)}</td>
+                        <td>${escaparHtml(d.motivo)}</td>
+                        <td class="acciones">
+                            <button class="boton boton-secundario boton-chico" onclick="editar(${d.id})" type="button">Editar</button>
+                            <button class="boton boton-peligro boton-chico" onclick="darDeBaja(${d.id})" type="button">Dar de baja</button>
+                        </td>
+                    </tr>`
+                    )
+                    .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        document.getElementById("boton-nuevo").addEventListener("click", () => {
+            resetearFormulario();
+            proponerDestino();
+            mostrarFormulario("Nueva derivación");
+        });
+
+        document.getElementById("boton-cancelar").addEventListener("click", ocultarFormulario);
+
+        document.getElementById("formulario-derivacion").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            ocultarMensajes();
+
+            const datos = {
+                animalId: Number(document.getElementById("animalId").value),
+                organizacionOrigenId: Number(document.getElementById("organizacionOrigenId").value),
+                organizacionDestinoId: Number(document.getElementById("organizacionDestinoId").value),
+                fechaDerivacion: document.getElementById("fecha").value,
+                motivo: document.getElementById("motivo").value.trim(),
+                observaciones: document.getElementById("observaciones").value.trim() || null,
+            };
+
+            const id = document.getElementById("derivacionId").value;
+
+            try {
+                if (id) {
+                    await api.put(`/derivaciones/${id}`, datos);
+                    mostrarExito("Derivación actualizada correctamente.");
+                } else {
+                    await api.post("/derivaciones", datos);
+                    mostrarExito("Derivación registrada. El animal ya figura en la organización de destino y, si estaba en tránsito, ese tránsito se cerró con la fecha de la derivación.");
+                    await cargarAnimales();
+                }
+                ocultarFormulario();
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        async function editar(id) {
+            ocultarMensajes();
+            try {
+                const d = await api.get(`/derivaciones/${id}`);
+                document.getElementById("derivacionId").value = d.id;
+                document.getElementById("animalId").value = d.animalId;
+                document.getElementById("animalId").disabled = true;
+                document.getElementById("organizacionOrigenId").value = d.organizacionOrigenId;
+                document.getElementById("organizacionOrigenId").disabled = true;
+                document.getElementById("organizacionDestinoId").value = d.organizacionDestinoId;
+                document.getElementById("organizacionDestinoId").disabled = true;
+                document.getElementById("fecha").value = d.fechaDerivacion;
+                document.getElementById("motivo").value = d.motivo;
+                document.getElementById("observaciones").value = d.observaciones ?? "";
+                document.getElementById("aviso-rn03").hidden = true;
+                document.getElementById("advertencia-destino").hidden = true;
+                mostrarFormulario("Editar derivación");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function darDeBaja(id) {
+            if (!confirm("¿Dar de baja esta derivación? Se conserva en el historial del animal.")) {
+                return;
+            }
+            ocultarMensajes();
+            try {
+                await api.del(`/derivaciones/${id}`);
+                mostrarExito("Derivación dada de baja.");
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function resetearFormulario() {
+            document.getElementById("formulario-derivacion").reset();
+            document.getElementById("derivacionId").value = "";
+            document.getElementById("fecha").value = hoyIso();
+            document.getElementById("animalId").disabled = false;
+            document.getElementById("organizacionOrigenId").disabled = false;
+            document.getElementById("organizacionDestinoId").disabled = false;
+        }
+
+        function mostrarFormulario(titulo) {
+            document.getElementById("titulo-formulario").textContent = titulo;
+            document.getElementById("tarjeta-formulario").hidden = false;
+            document.getElementById("tarjeta-formulario").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function ocultarFormulario() {
+            document.getElementById("tarjeta-formulario").hidden = true;
+        }
+
+        function mostrarError(mensaje) {
+            const elemento = document.getElementById("mensaje-error");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+
+        function mostrarExito(mensaje) {
+            const elemento = document.getElementById("mensaje-exito");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+
+        function ocultarMensajes() {
+            document.getElementById("mensaje-error").hidden = true;
+            document.getElementById("mensaje-exito").hidden = true;
+        }
+    </script>
+</body>
+</html>

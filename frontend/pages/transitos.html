@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Tránsitos</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <header id="encabezado" class="encabezado"></header>
+
+    <main class="contenedor">
+        <div class="barra-herramientas">
+            <h1>Tránsitos</h1>
+            <button id="boton-nuevo" class="boton" type="button">Nuevo tránsito</button>
+        </div>
+
+        <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+        <div id="mensaje-exito" class="alerta alerta-exito" hidden></div>
+
+        <section id="tarjeta-formulario" class="tarjeta" hidden>
+            <h2 id="titulo-formulario" style="margin-top:0;">Nuevo tránsito</h2>
+            <form id="formulario-transito">
+                <input type="hidden" id="transitoId">
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="animalId">Animal *</label>
+                        <select id="animalId" required></select>
+                    </div>
+                    <div class="campo">
+                        <label for="espacioTransitoId">Espacio de tránsito *</label>
+                        <select id="espacioTransitoId" required></select>
+                        <span id="ocupacion" class="ayuda"></span>
+                    </div>
+                </div>
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="fechaInicio">Fecha de inicio *</label>
+                        <input type="date" id="fechaInicio" required>
+                    </div>
+                    <div class="campo">
+                        <label for="fechaFin">Fecha de fin</label>
+                        <input type="date" id="fechaFin">
+                        <span class="ayuda">Vacía mientras el animal siga en el espacio.</span>
+                    </div>
+                </div>
+                <label id="grupo-alimentacion" class="casilla" hidden>
+                    <input type="checkbox" id="confirmaAlimentacionAutonoma">
+                    Confirmo que el cachorro ya puede alimentarse solo
+                </label>
+                <div class="campo">
+                    <label for="observaciones">Observaciones</label>
+                    <textarea id="observaciones"></textarea>
+                </div>
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Guardar</button>
+                    <button type="button" id="boton-cancelar" class="boton boton-secundario">Cancelar</button>
+                </div>
+            </form>
+        </section>
+
+        <section id="tarjeta-formulario-espacio" class="tarjeta" hidden>
+            <h2 id="titulo-formulario-espacio" style="margin-top:0;">Nuevo espacio de tránsito</h2>
+            <form id="formulario-espacio">
+                <input type="hidden" id="espacioId">
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="espacio-nombre">Nombre *</label>
+                        <input type="text" id="espacio-nombre" maxlength="255" required>
+                    </div>
+                    <div class="campo">
+                        <label for="espacio-capacidad">Capacidad *</label>
+                        <input type="number" id="espacio-capacidad" min="1" step="1" required>
+                        <span class="ayuda">Cantidad máxima de animales en tránsito al mismo tiempo.</span>
+                    </div>
+                    <div class="campo">
+                        <label for="espacio-estado">Estado *</label>
+                        <select id="espacio-estado" required>
+                            <option value="ACTIVO">Activo (recibe ingresos)</option>
+                            <option value="INACTIVO">Inactivo (no recibe ingresos)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label for="espacio-descripcion">Descripción</label>
+                    <textarea id="espacio-descripcion" maxlength="1000"></textarea>
+                </div>
+                <div class="campo">
+                    <label for="espacio-observaciones">Observaciones</label>
+                    <textarea id="espacio-observaciones" maxlength="1000"></textarea>
+                </div>
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Guardar espacio</button>
+                    <button type="button" id="boton-cancelar-espacio" class="boton boton-secundario">Cancelar</button>
+                </div>
+            </form>
+        </section>
+
+        <div class="tarjeta">
+            <div class="barra-herramientas">
+                <h2 style="margin:0;">Espacios de tránsito</h2>
+                <button id="boton-nuevo-espacio" class="boton boton-secundario" type="button">Nuevo espacio</button>
+            </div>
+            <div id="grilla-espacios" class="grilla-espacios"></div>
+            <p id="espacios-vacio" class="vacio" hidden>No hay espacios de tránsito registrados todavía.</p>
+        </div>
+
+        <div class="tarjeta">
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Animal</th>
+                            <th>Espacio</th>
+                            <th>Organización</th>
+                            <th>Inicio</th>
+                            <th>Fin</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-tabla"></tbody>
+                </table>
+                <p id="tabla-vacia" class="vacio" hidden>No hay tránsitos registrados todavía.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/etiquetas.js"></script>
+    <script>
+        const sesion = inicializarPagina("transitos.html");
+        let animales = [];
+        let espacios = [];
+
+        if (sesion) {
+            iniciar();
+        }
+
+        async function iniciar() {
+            await cargarDatos();
+            await cargarTabla();
+        }
+
+        async function cargarDatos() {
+            try {
+                [animales, espacios] = await Promise.all([api.get(`/animales?organizacionId=${sesion.organizacionId}`), api.get("/espacios-transito")]);
+                document.getElementById("animalId").innerHTML = animales
+                    .map((a) => `<option value="${a.id}">${escaparHtml(a.nombre)} (${escaparHtml(a.organizacionNombre)})</option>`)
+                    .join("");
+                mostrarTarjetasEspacios();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function mostrarTarjetasEspacios() {
+            const ordenados = [...espacios].sort((a, b) =>
+                (b.organizacionId === sesion.organizacionId) - (a.organizacionId === sesion.organizacionId));
+            document.getElementById("espacios-vacio").hidden = ordenados.length > 0;
+            document.getElementById("grilla-espacios").innerHTML = ordenados
+                .map((e) => {
+                    const disponibles = Math.max(e.capacidad - e.ocupacion, 0);
+                    const completo = e.ocupacion >= e.capacidad;
+                    const clases = ["tarjeta-espacio", completo ? "completo" : "", e.estado === "INACTIVO" ? "inactivo" : ""].join(" ");
+                    const propio = e.organizacionId === sesion.organizacionId;
+                    return `
+                <article class="${clases}">
+                    <h3>${escaparHtml(e.nombre)}</h3>
+                    <p class="organizacion-espacio">${escaparHtml(e.organizacionNombre)}</p>
+                    <dl>
+                        <dt>Ocupados</dt><dd>${e.ocupacion}</dd>
+                        <dt>Capacidad</dt><dd>${e.capacidad}</dd>
+                        <dt>Lugares disponibles</dt><dd class="disponibles">${disponibles}</dd>
+                    </dl>
+                    ${completo ? `<span class="etiqueta etiqueta-peligro">Completo</span>` : ""}
+                    ${e.estado === "INACTIVO" ? `<span class="etiqueta">Inactivo</span>` : ""}
+                    ${propio ? `<div class="acciones" style="margin-top:0.6rem;"><button class="boton boton-secundario boton-chico" onclick="editarEspacio(${e.id})" type="button">Editar</button></div>` : ""}
+                </article>`;
+                })
+                .join("");
+        }
+
+        document.getElementById("boton-nuevo-espacio").addEventListener("click", () => {
+            ocultarMensajes();
+            document.getElementById("formulario-espacio").reset();
+            document.getElementById("espacioId").value = "";
+            document.getElementById("espacio-estado").value = "ACTIVO";
+            mostrarFormularioEspacio("Nuevo espacio de tránsito");
+        });
+
+        document.getElementById("boton-cancelar-espacio").addEventListener("click", () => {
+            document.getElementById("tarjeta-formulario-espacio").hidden = true;
+        });
+
+        function editarEspacio(id) {
+            ocultarMensajes();
+            const e = espacios.find((x) => x.id === id);
+            document.getElementById("espacioId").value = e.id;
+            document.getElementById("espacio-nombre").value = e.nombre;
+            document.getElementById("espacio-capacidad").value = e.capacidad;
+            document.getElementById("espacio-estado").value = e.estado;
+            document.getElementById("espacio-descripcion").value = e.descripcion ?? "";
+            document.getElementById("espacio-observaciones").value = e.observaciones ?? "";
+            mostrarFormularioEspacio(`Editar espacio: ${e.nombre}`);
+        }
+
+        document.getElementById("formulario-espacio").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            ocultarMensajes();
+            const datos = {
+                organizacionId: sesion.organizacionId,
+                nombre: document.getElementById("espacio-nombre").value.trim(),
+                capacidad: Number(document.getElementById("espacio-capacidad").value),
+                estado: document.getElementById("espacio-estado").value,
+                descripcion: document.getElementById("espacio-descripcion").value.trim() || null,
+                observaciones: document.getElementById("espacio-observaciones").value.trim() || null,
+            };
+            const id = document.getElementById("espacioId").value;
+            try {
+                if (id) {
+                    await api.put(`/espacios-transito/${id}`, datos);
+                    mostrarExito(`Espacio "${datos.nombre}" actualizado correctamente.`);
+                } else {
+                    await api.post("/espacios-transito", datos);
+                    mostrarExito(`Espacio "${datos.nombre}" registrado correctamente.`);
+                }
+                document.getElementById("tarjeta-formulario-espacio").hidden = true;
+                await cargarDatos();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        function mostrarFormularioEspacio(titulo) {
+            document.getElementById("titulo-formulario-espacio").textContent = titulo;
+            document.getElementById("tarjeta-formulario-espacio").hidden = false;
+            document.getElementById("tarjeta-formulario-espacio").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function cargarEspaciosDelAnimal() {
+            const animal = animales.find((a) => String(a.id) === document.getElementById("animalId").value);
+            const esCachorro = animal?.etapaVida === "CACHORRO" && !document.getElementById("transitoId").value;
+            document.getElementById("grupo-alimentacion").hidden = !esCachorro;
+            document.getElementById("confirmaAlimentacionAutonoma").checked = false;
+            const propios = animal ? espacios.filter((e) => e.organizacionId === animal.organizacionId) : [];
+            document.getElementById("espacioTransitoId").innerHTML = propios.length
+                ? propios.map((e) => `<option value="${e.id}">${escaparHtml(e.nombre)} (${e.ocupacion} / ${e.capacidad})</option>`).join("")
+                : `<option value="">La organización del animal no tiene espacios</option>`;
+            mostrarOcupacion();
+        }
+
+        function mostrarOcupacion() {
+            const espacio = espacios.find((e) => String(e.id) === document.getElementById("espacioTransitoId").value);
+            document.getElementById("ocupacion").textContent = espacio
+                ? `Ocupación actual: ${espacio.ocupacion} / ${espacio.capacidad}` + (espacio.ocupacion >= espacio.capacidad ? " (completo)" : "")
+                : "";
+        }
+
+        document.getElementById("animalId").addEventListener("change", cargarEspaciosDelAnimal);
+        document.getElementById("espacioTransitoId").addEventListener("change", mostrarOcupacion);
+
+        async function cargarTabla() {
+            try {
+                const transitos = await api.get("/transitos");
+                document.getElementById("tabla-vacia").hidden = transitos.length > 0;
+                document.getElementById("cuerpo-tabla").innerHTML = transitos
+                    .map(
+                        (t) => `
+                    <tr>
+                        <td>${enlaceHistorial(t.animalId, t.animalNombre)}</td>
+                        <td>${escaparHtml(t.espacioTransitoNombre)}</td>
+                        <td>${escaparHtml(t.organizacionNombre)}</td>
+                        <td>${formatearFecha(t.fechaInicio)}</td>
+                        <td>${t.fechaFin ? formatearFecha(t.fechaFin) : ""}</td>
+                        <td>${t.estado === "EN_CURSO" ? `<span class="etiqueta etiqueta-exito">En curso</span>` : "Finalizado"}</td>
+                        <td class="acciones">
+                            <button class="boton boton-secundario boton-chico" onclick="editar(${t.id})" type="button">Editar</button>
+                            <button class="boton boton-peligro boton-chico" onclick="darDeBaja(${t.id})" type="button">Dar de baja</button>
+                        </td>
+                    </tr>`
+                    )
+                    .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        document.getElementById("boton-nuevo").addEventListener("click", async () => {
+            ocultarMensajes();
+            await cargarDatos();
+            resetearFormulario();
+            mostrarFormulario("Nuevo tránsito");
+        });
+
+        document.getElementById("boton-cancelar").addEventListener("click", ocultarFormulario);
+
+        document.getElementById("formulario-transito").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            ocultarMensajes();
+
+            const datos = {
+                animalId: Number(document.getElementById("animalId").value),
+                espacioTransitoId: Number(document.getElementById("espacioTransitoId").value) || null,
+                fechaInicio: document.getElementById("fechaInicio").value,
+                fechaFin: document.getElementById("fechaFin").value || null,
+                observaciones: document.getElementById("observaciones").value.trim() || null,
+            };
+
+            const id = document.getElementById("transitoId").value;
+            if (!id && !document.getElementById("grupo-alimentacion").hidden) {
+                datos.confirmaAlimentacionAutonoma = document.getElementById("confirmaAlimentacionAutonoma").checked;
+                if (!datos.confirmaAlimentacionAutonoma) {
+                    mostrarError("Para registrar el ingreso de un cachorro hay que confirmar que ya puede alimentarse solo.");
+                    return;
+                }
+            }
+            try {
+                if (id) {
+                    await api.put(`/transitos/${id}`, datos);
+                    mostrarExito("Tránsito actualizado correctamente.");
+                } else {
+                    await api.post("/transitos", datos);
+                    mostrarExito("Tránsito registrado correctamente.");
+                }
+                ocultarFormulario();
+                await cargarDatos();
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        async function editar(id) {
+            ocultarMensajes();
+            try {
+                const t = await api.get(`/transitos/${id}`);
+                document.getElementById("transitoId").value = t.id;
+                document.getElementById("animalId").innerHTML = `<option value="${t.animalId}">${escaparHtml(t.animalNombre)}</option>`;
+                document.getElementById("animalId").disabled = true;
+                document.getElementById("espacioTransitoId").innerHTML = `<option value="${t.espacioTransitoId}">${escaparHtml(t.espacioTransitoNombre)}</option>`;
+                document.getElementById("espacioTransitoId").disabled = true;
+                document.getElementById("ocupacion").textContent = "";
+                document.getElementById("grupo-alimentacion").hidden = true;
+                document.getElementById("fechaInicio").value = t.fechaInicio;
+                document.getElementById("fechaFin").value = t.fechaFin ?? "";
+                document.getElementById("observaciones").value = t.observaciones ?? "";
+                mostrarFormulario("Editar tránsito");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function darDeBaja(id) {
+            if (!confirm("¿Dar de baja este tránsito? Se conserva en el historial del animal.")) {
+                return;
+            }
+            ocultarMensajes();
+            try {
+                await api.del(`/transitos/${id}`);
+                mostrarExito("Tránsito dado de baja.");
+                await cargarDatos();
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function resetearFormulario() {
+            document.getElementById("formulario-transito").reset();
+            document.getElementById("transitoId").value = "";
+            document.getElementById("animalId").disabled = false;
+            document.getElementById("espacioTransitoId").disabled = false;
+            document.getElementById("fechaInicio").value = hoyIso();
+            cargarEspaciosDelAnimal();
+        }
+
+        function mostrarFormulario(titulo) {
+            document.getElementById("titulo-formulario").textContent = titulo;
+            document.getElementById("tarjeta-formulario").hidden = false;
+            document.getElementById("tarjeta-formulario").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function ocultarFormulario() {
+            document.getElementById("tarjeta-formulario").hidden = true;
+        }
+
+        function mostrarError(mensaje) {
+            const elemento = document.getElementById("mensaje-error");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+            elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        function mostrarExito(mensaje) {
+            const elemento = document.getElementById("mensaje-exito");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+
+        function ocultarMensajes() {
+            document.getElementById("mensaje-error").hidden = true;
+            document.getElementById("mensaje-exito").hidden = true;
+        }
+    </script>
+</body>
+</html>

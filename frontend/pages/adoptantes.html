@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Adoptantes</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <header id="encabezado" class="encabezado"></header>
+
+    <main class="contenedor">
+        <div class="barra-herramientas">
+            <h1>Adoptantes</h1>
+            <button id="boton-nuevo" class="boton" type="button">Nuevo adoptante</button>
+        </div>
+        <p class="subtitulo" style="margin-top:0;">
+            Solo se muestran los adoptantes registrados por tu organización: sus datos personales no son
+            visibles para la otra organización.
+        </p>
+
+        <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+        <div id="mensaje-exito" class="alerta alerta-exito" hidden></div>
+
+        <section id="tarjeta-formulario" class="tarjeta" hidden>
+            <h2 id="titulo-formulario" style="margin-top:0;">Nuevo adoptante</h2>
+            <form id="formulario-adoptante">
+                <input type="hidden" id="adoptanteId">
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="nombre">Nombre *</label>
+                        <input type="text" id="nombre" maxlength="100" required>
+                    </div>
+                    <div class="campo">
+                        <label for="apellido">Apellido *</label>
+                        <input type="text" id="apellido" maxlength="100" required>
+                    </div>
+                    <div class="campo">
+                        <label for="documento">Número de documento *</label>
+                        <input type="text" id="documento" maxlength="30" inputmode="numeric" required>
+                        <span class="ayuda">Solo el número, sin puntos. No se guarda foto del documento.</span>
+                    </div>
+                </div>
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="telefono">Teléfono</label>
+                        <input type="text" id="telefono">
+                    </div>
+                    <div class="campo">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" maxlength="150">
+                    </div>
+                    <div class="campo">
+                        <label for="direccion">Dirección</label>
+                        <input type="text" id="direccion">
+                    </div>
+                </div>
+                <div class="campo">
+                    <label for="observaciones">Observaciones</label>
+                    <textarea id="observaciones"></textarea>
+                </div>
+                <label class="casilla">
+                    <input type="checkbox" id="consentimientoDatos">
+                    <span>
+                        El adoptante dio su consentimiento para que la organización registre y use sus datos
+                        personales para gestionar la adopción y su seguimiento. *
+                    </span>
+                </label>
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Guardar</button>
+                    <button type="button" id="boton-cancelar" class="boton boton-secundario">Cancelar</button>
+                </div>
+            </form>
+        </section>
+
+        <div class="tarjeta">
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Documento</th>
+                            <th>Teléfono</th>
+                            <th>Email</th>
+                            <th>Dirección</th>
+                            <th>Consentimiento</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-tabla"></tbody>
+                </table>
+                <p id="tabla-vacia" class="vacio" hidden>No hay adoptantes registrados todavía.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/etiquetas.js"></script>
+    <script>
+        const sesion = inicializarPagina("adoptantes.html");
+
+        if (sesion) {
+            cargarTabla();
+        }
+
+        async function cargarTabla() {
+            try {
+                const adoptantes = await api.get("/adoptantes");
+                document.getElementById("tabla-vacia").hidden = adoptantes.length > 0;
+                document.getElementById("cuerpo-tabla").innerHTML = adoptantes
+                    .map(
+                        (a) => `
+                    <tr>
+                        <td>${escaparHtml(a.nombre)} ${escaparHtml(a.apellido)}</td>
+                        <td>${escaparHtml(a.documento)}</td>
+                        <td>${escaparHtml(a.telefono)}</td>
+                        <td>${escaparHtml(a.email)}</td>
+                        <td>${escaparHtml(a.direccion)}</td>
+                        <td>${formatearFecha(a.fechaConsentimiento)}</td>
+                        <td class="acciones">
+                            <button class="boton boton-secundario boton-chico" onclick="editar(${a.id})" type="button">Editar</button>
+                            <button class="boton boton-peligro boton-chico" onclick="darDeBaja(${a.id})" type="button">Dar de baja</button>
+                        </td>
+                    </tr>`
+                    )
+                    .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        document.getElementById("boton-nuevo").addEventListener("click", () => {
+            resetearFormulario();
+            mostrarFormulario("Nuevo adoptante");
+        });
+
+        document.getElementById("boton-cancelar").addEventListener("click", ocultarFormulario);
+
+        document.getElementById("formulario-adoptante").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            ocultarMensajes();
+
+            const datos = {
+                nombre: document.getElementById("nombre").value.trim(),
+                apellido: document.getElementById("apellido").value.trim(),
+                documento: document.getElementById("documento").value.trim(),
+                telefono: document.getElementById("telefono").value.trim() || null,
+                email: document.getElementById("email").value.trim() || null,
+                direccion: document.getElementById("direccion").value.trim() || null,
+                observaciones: document.getElementById("observaciones").value.trim() || null,
+                consentimientoDatos: document.getElementById("consentimientoDatos").checked,
+            };
+
+            const id = document.getElementById("adoptanteId").value;
+            try {
+                if (id) {
+                    await api.put(`/adoptantes/${id}`, datos);
+                    mostrarExito("Adoptante actualizado correctamente.");
+                } else {
+                    await api.post("/adoptantes", datos);
+                    mostrarExito("Adoptante registrado correctamente.");
+                }
+                ocultarFormulario();
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        async function editar(id) {
+            ocultarMensajes();
+            try {
+                const a = await api.get(`/adoptantes/${id}`);
+                document.getElementById("adoptanteId").value = a.id;
+                document.getElementById("nombre").value = a.nombre;
+                document.getElementById("apellido").value = a.apellido;
+                document.getElementById("email").value = a.email ?? "";
+                document.getElementById("observaciones").value = a.observaciones ?? "";
+                document.getElementById("documento").value = a.documento;
+                document.getElementById("telefono").value = a.telefono ?? "";
+                document.getElementById("direccion").value = a.direccion ?? "";
+                document.getElementById("consentimientoDatos").checked = a.consentimientoDatos;
+                mostrarFormulario("Editar adoptante");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function darDeBaja(id) {
+            if (!confirm("¿Dar de baja este adoptante?")) {
+                return;
+            }
+            ocultarMensajes();
+            try {
+                await api.del(`/adoptantes/${id}`);
+                mostrarExito("Adoptante dado de baja.");
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function resetearFormulario() {
+            document.getElementById("formulario-adoptante").reset();
+            document.getElementById("adoptanteId").value = "";
+        }
+
+        function mostrarFormulario(titulo) {
+            document.getElementById("titulo-formulario").textContent = titulo;
+            document.getElementById("tarjeta-formulario").hidden = false;
+            document.getElementById("tarjeta-formulario").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function ocultarFormulario() {
+            document.getElementById("tarjeta-formulario").hidden = true;
+        }
+
+        function mostrarError(mensaje) {
+            const elemento = document.getElementById("mensaje-error");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+            elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        function mostrarExito(mensaje) {
+            const elemento = document.getElementById("mensaje-exito");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+
+        function ocultarMensajes() {
+            document.getElementById("mensaje-error").hidden = true;
+            document.getElementById("mensaje-exito").hidden = true;
+        }
+    </script>
+</body>
+</html>

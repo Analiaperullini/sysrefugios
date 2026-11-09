@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Adopciones</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <header id="encabezado" class="encabezado"></header>
+
+    <main class="contenedor">
+        <div class="barra-herramientas">
+            <h1>Adopciones</h1>
+            <button id="boton-nuevo" class="boton" type="button">Nueva adopción</button>
+        </div>
+
+        <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+        <div id="mensaje-exito" class="alerta alerta-exito" hidden></div>
+
+        <section id="tarjeta-formulario" class="tarjeta" hidden>
+            <h2 id="titulo-formulario" style="margin-top:0;">Nueva adopción</h2>
+            <form id="formulario-adopcion">
+                <input type="hidden" id="adopcionId">
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="animalId">Animal *</label>
+                        <select id="animalId" required></select>
+                        <span class="ayuda">Animales a cargo de tu organización que todavía no fueron adoptados.</span>
+                    </div>
+                    <div class="campo">
+                        <label for="adoptanteId">Adoptante *</label>
+                        <select id="adoptanteId" required></select>
+                    </div>
+                </div>
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="fechaAdopcion">Fecha de adopción *</label>
+                        <input type="date" id="fechaAdopcion" required>
+                    </div>
+                    <div class="campo">
+                        <label for="fechaLimiteCastracion">Fecha límite de castración</label>
+                        <input type="date" id="fechaLimiteCastracion" readonly>
+                        <span class="ayuda">Se calcula sola: fecha de adopción + 6 meses.</span>
+                    </div>
+                </div>
+
+                <fieldset>
+                    <legend>Requisitos del adoptante *</legend>
+                    <label class="casilla">
+                        <input type="checkbox" id="cumpleMayorEdad">
+                        Es mayor de edad
+                    </label>
+                    <label class="casilla">
+                        <input type="checkbox" id="cumpleResponsabilidad">
+                        Asume la responsabilidad del cuidado del animal
+                    </label>
+                    <label class="casilla">
+                        <input type="checkbox" id="cumpleEspacioCerrado">
+                        Cuenta con un espacio cerrado
+                    </label>
+                    <span class="ayuda">Si falta alguno, la adopción no se registra.</span>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Compromisos</legend>
+                    <label class="casilla">
+                        <input type="checkbox" id="compromisoVacunacion">
+                        Compromiso de vacunación
+                    </label>
+                    <label class="casilla">
+                        <input type="checkbox" id="compromisoCastracion">
+                        Compromiso de castración
+                    </label>
+                    <div class="campo">
+                        <label for="condiciones">Condiciones de la adopción</label>
+                        <textarea id="condiciones"></textarea>
+                    </div>
+                    <div class="campo">
+                        <label for="observaciones">Observaciones</label>
+                        <textarea id="observaciones"></textarea>
+                    </div>
+                </fieldset>
+
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Guardar</button>
+                    <button type="button" id="boton-cancelar" class="boton boton-secundario">Cancelar</button>
+                </div>
+            </form>
+        </section>
+
+        <div class="tarjeta">
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Animal</th>
+                            <th>Adoptante</th>
+                            <th>Organización</th>
+                            <th>Fecha</th>
+                            <th>Límite de castración</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-tabla"></tbody>
+                </table>
+                <p id="tabla-vacia" class="vacio" hidden>No hay adopciones registradas todavía.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/etiquetas.js"></script>
+    <script>
+        const sesion = inicializarPagina("adopciones.html");
+        const CASILLAS = ["cumpleMayorEdad", "cumpleResponsabilidad", "cumpleEspacioCerrado", "compromisoVacunacion", "compromisoCastracion"];
+
+        if (sesion) {
+            cargarTabla();
+        }
+
+        async function cargarOpciones() {
+            const [animales, adoptantes] = await Promise.all([
+                api.get(`/animales?organizacionId=${sesion.organizacionId}`),
+                api.get("/adoptantes"),
+            ]);
+            const disponibles = animales.filter((a) => a.estado !== "ADOPTADO");
+            document.getElementById("animalId").innerHTML = disponibles.length
+                ? disponibles.map((a) => `<option value="${a.id}">${escaparHtml(a.nombre)} (${etiqueta(ESTADOS_ANIMAL, a.estado)})</option>`).join("")
+                : `<option value="">No hay animales disponibles</option>`;
+            document.getElementById("adoptanteId").innerHTML = adoptantes.length
+                ? adoptantes.map((a) => `<option value="${a.id}">${escaparHtml(a.nombre)} ${escaparHtml(a.apellido)} (${escaparHtml(a.documento)})</option>`).join("")
+                : `<option value="">Primero registrá un adoptante</option>`;
+        }
+
+        async function cargarTabla() {
+            try {
+                const adopciones = await api.get("/adopciones");
+                document.getElementById("tabla-vacia").hidden = adopciones.length > 0;
+                document.getElementById("cuerpo-tabla").innerHTML = adopciones
+                    .map((a) => {
+                        const propia = !a.datosAdoptanteReservados;
+                        const limite = a.alertaCastracionVencida
+                            ? `<span class="etiqueta etiqueta-peligro">${formatearFecha(a.fechaLimiteCastracion)} - vencida</span>`
+                            : formatearFecha(a.fechaLimiteCastracion);
+                        return `
+                    <tr>
+                        <td>${enlaceHistorial(a.animalId, a.animalNombre)}</td>
+                        <td>${propia ? escaparHtml(a.adoptanteNombre) : `<span class="etiqueta">Datos reservados</span>`}</td>
+                        <td>${escaparHtml(a.organizacionNombre)}</td>
+                        <td>${formatearFecha(a.fechaAdopcion)}</td>
+                        <td>${limite}</td>
+                        <td class="acciones">
+                            ${propia
+                                ? `<button class="boton boton-secundario boton-chico" onclick="editar(${a.id})" type="button">Editar</button>
+                                   <button class="boton boton-peligro boton-chico" onclick="darDeBaja(${a.id})" type="button">Dar de baja</button>`
+                                : ""}
+                        </td>
+                    </tr>`;
+                    })
+                    .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function actualizarFechaLimite() {
+            const fecha = document.getElementById("fechaAdopcion").value;
+            document.getElementById("fechaLimiteCastracion").value = fecha ? sumarMeses(fecha, 6) : "";
+        }
+
+        document.getElementById("fechaAdopcion").addEventListener("change", actualizarFechaLimite);
+
+        document.getElementById("boton-nuevo").addEventListener("click", async () => {
+            ocultarMensajes();
+            try {
+                await cargarOpciones();
+                resetearFormulario();
+                mostrarFormulario("Nueva adopción");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        document.getElementById("boton-cancelar").addEventListener("click", ocultarFormulario);
+
+        document.getElementById("formulario-adopcion").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            ocultarMensajes();
+
+            const datos = {
+                animalId: Number(document.getElementById("animalId").value) || null,
+                adoptanteId: Number(document.getElementById("adoptanteId").value) || null,
+                fechaAdopcion: document.getElementById("fechaAdopcion").value,
+                condiciones: document.getElementById("condiciones").value.trim() || null,
+                observaciones: document.getElementById("observaciones").value.trim() || null,
+            };
+            CASILLAS.forEach((id) => (datos[id] = document.getElementById(id).checked));
+
+            const id = document.getElementById("adopcionId").value;
+            try {
+                if (id) {
+                    await api.put(`/adopciones/${id}`, datos);
+                    mostrarExito("Adopción actualizada correctamente.");
+                } else {
+                    await api.post("/adopciones", datos);
+                    mostrarExito("Adopción registrada. Si el animal estaba en tránsito, el tránsito se cerró con la fecha de adopción.");
+                }
+                ocultarFormulario();
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        async function editar(id) {
+            ocultarMensajes();
+            try {
+                const a = await api.get(`/adopciones/${id}`);
+                resetearFormulario();
+                document.getElementById("adopcionId").value = a.id;
+                document.getElementById("animalId").innerHTML = `<option value="${a.animalId}">${escaparHtml(a.animalNombre)}</option>`;
+                document.getElementById("animalId").disabled = true;
+                document.getElementById("adoptanteId").innerHTML = `<option value="${a.adoptanteId}">${escaparHtml(a.adoptanteNombre)}</option>`;
+                document.getElementById("adoptanteId").disabled = true;
+                document.getElementById("fechaAdopcion").value = a.fechaAdopcion;
+                document.getElementById("condiciones").value = a.condiciones ?? "";
+                document.getElementById("observaciones").value = a.observaciones ?? "";
+                CASILLAS.forEach((c) => (document.getElementById(c).checked = a[c]));
+                actualizarFechaLimite();
+                mostrarFormulario("Editar adopción");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function darDeBaja(id) {
+            if (!confirm("¿Dar de baja esta adopción? El animal vuelve a estar en adopción.")) {
+                return;
+            }
+            ocultarMensajes();
+            try {
+                await api.del(`/adopciones/${id}`);
+                mostrarExito("Adopción dada de baja. El animal volvió a estado En adopción.");
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function resetearFormulario() {
+            document.getElementById("formulario-adopcion").reset();
+            document.getElementById("adopcionId").value = "";
+            document.getElementById("animalId").disabled = false;
+            document.getElementById("adoptanteId").disabled = false;
+            document.getElementById("fechaAdopcion").value = hoyIso();
+            actualizarFechaLimite();
+        }
+
+        function mostrarFormulario(titulo) {
+            document.getElementById("titulo-formulario").textContent = titulo;
+            document.getElementById("tarjeta-formulario").hidden = false;
+            document.getElementById("tarjeta-formulario").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function ocultarFormulario() {
+            document.getElementById("tarjeta-formulario").hidden = true;
+        }
+
+        function mostrarError(mensaje) {
+            const elemento = document.getElementById("mensaje-error");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+            elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        function mostrarExito(mensaje) {
+            const elemento = document.getElementById("mensaje-exito");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+
+        function ocultarMensajes() {
+            document.getElementById("mensaje-error").hidden = true;
+            document.getElementById("mensaje-exito").hidden = true;
+        }
+    </script>
+</body>
+</html>

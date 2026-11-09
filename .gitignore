@@ -1,0 +1,6 @@
+backend/target/
+*.zip
+*.mp4
+.idea/
+.vscode/
+*.iml

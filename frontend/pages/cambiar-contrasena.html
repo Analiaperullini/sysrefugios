@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Cambiar contraseña</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="contenedor-angosto">
+        <div class="tarjeta">
+            <h1 style="margin-top:0;">Cambiar contraseña</h1>
+            <p id="aviso-provisoria" class="subtitulo" style="margin-top:0;" hidden>
+                Tu contraseña es provisoria o venció (se cambia cada 180 días). Para seguir usando el
+                sistema tenés que elegir una nueva.
+            </p>
+
+            <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+
+            <form id="formulario-cambio">
+                <div class="campo">
+                    <label for="contrasenaActual">Contraseña actual</label>
+                    <input type="password" id="contrasenaActual" required autofocus>
+                </div>
+                <div class="campo">
+                    <label for="contrasenaNueva">Contraseña nueva</label>
+                    <input type="password" id="contrasenaNueva" required minlength="8">
+                    <small class="subtitulo">Mínimo 8 caracteres, con al menos una mayúscula, una minúscula y un número.</small>
+                </div>
+                <div class="campo">
+                    <label for="contrasenaConfirmacion">Repetir contraseña nueva</label>
+                    <input type="password" id="contrasenaConfirmacion" required>
+                </div>
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Guardar</button>
+                    <button type="button" id="boton-cancelar" class="boton boton-secundario">Salir</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script>
+        const sesion = exigirSesion();
+        const mensajeError = document.getElementById("mensaje-error");
+
+        const PATRON_CONTRASENA = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+        const MENSAJE_CONTRASENA =
+            "La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.";
+
+        if (sesion) {
+            document.getElementById("aviso-provisoria").hidden = !sesion.cambioObligatorio;
+            document.getElementById("boton-cancelar").addEventListener("click", () => {
+                if (sesion.cambioObligatorio) {
+                    cerrarSesion();
+                } else {
+                    window.location.href = "inicio.html";
+                }
+            });
+        }
+
+        document.getElementById("formulario-cambio").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            mensajeError.hidden = true;
+
+            const contrasenaNueva = document.getElementById("contrasenaNueva").value;
+            if (!PATRON_CONTRASENA.test(contrasenaNueva)) {
+                mensajeError.textContent = MENSAJE_CONTRASENA;
+                mensajeError.hidden = false;
+                return;
+            }
+            if (contrasenaNueva !== document.getElementById("contrasenaConfirmacion").value) {
+                mensajeError.textContent = "Las contraseñas nuevas no coinciden.";
+                mensajeError.hidden = false;
+                return;
+            }
+
+            try {
+                const usuario = await api.post("/cambiar-contrasena", {
+                    contrasenaActual: document.getElementById("contrasenaActual").value,
+                    contrasenaNueva,
+                });
+                guardarSesion(usuario);
+                window.location.href = "inicio.html";
+            } catch (error) {
+                mensajeError.textContent = error.message;
+                mensajeError.hidden = false;
+            }
+        });
+    </script>
+</body>
+</html>

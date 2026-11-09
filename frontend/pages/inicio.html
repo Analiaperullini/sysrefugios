@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Inicio</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <header id="encabezado" class="encabezado"></header>
+
+    <main class="contenedor">
+        <h1 id="titulo-bienvenida"></h1>
+        <p class="subtitulo">Resumen de la información de tu organización.</p>
+
+        <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+
+        <div class="fila-tarjetas">
+            <div class="tarjeta" style="flex:1 1 180px; text-align:center;">
+                <div class="subtitulo" style="margin:0;">Animales a cargo</div>
+                <div id="dato-animales" style="font-size:2rem; font-weight:700;">-</div>
+            </div>
+            <div class="tarjeta" style="flex:1 1 180px; text-align:center;">
+                <div class="subtitulo" style="margin:0;">En tránsito</div>
+                <div id="dato-transito" style="font-size:2rem; font-weight:700;">-</div>
+            </div>
+            <div class="tarjeta" style="flex:1 1 180px; text-align:center;">
+                <div class="subtitulo" style="margin:0;">En adopción</div>
+                <div id="dato-en-adopcion" style="font-size:2rem; font-weight:700;">-</div>
+            </div>
+            <div class="tarjeta" style="flex:1 1 180px; text-align:center;">
+                <div class="subtitulo" style="margin:0;">Adoptados</div>
+                <div id="dato-adoptados" style="font-size:2rem; font-weight:700;">-</div>
+            </div>
+        </div>
+
+        <section class="tarjeta">
+            <h2 style="margin-top:0;">Alertas de castración vencida</h2>
+            <p class="subtitulo" style="margin-top:0;">
+                Adopciones de tu organización que superaron la fecha límite de castración (6 meses desde la
+                adopción) sin una castración registrada. Se revisan todos los días.
+            </p>
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Animal</th>
+                            <th>Adoptante</th>
+                            <th>Fecha de adopción</th>
+                            <th>Fecha límite</th>
+                            <th>Vencida hace</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-alertas"></tbody>
+                </table>
+                <p id="alertas-vacias" class="vacio" hidden>No hay alertas de castración vencida.</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/etiquetas.js"></script>
+    <script>
+        const sesion = inicializarPagina("inicio.html");
+        if (sesion) {
+            document.getElementById("titulo-bienvenida").textContent = `Hola, ${sesion.nombre} ${sesion.apellido}`;
+            cargarResumen();
+            cargarAlertas();
+        }
+
+        async function cargarResumen() {
+            try {
+                const animales = await api.get(`/animales?organizacionId=${sesion.organizacionId}`);
+                const contar = (estado) => animales.filter((a) => a.estado === estado).length;
+                document.getElementById("dato-animales").textContent = animales.length;
+                document.getElementById("dato-transito").textContent = contar("EN_TRANSITO");
+                document.getElementById("dato-en-adopcion").textContent = contar("EN_ADOPCION");
+                document.getElementById("dato-adoptados").textContent = contar("ADOPTADO");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function cargarAlertas() {
+            try {
+                const alertas = await api.get("/adopciones/alertas-castracion");
+                document.getElementById("alertas-vacias").hidden = alertas.length > 0;
+                document.getElementById("cuerpo-alertas").innerHTML = alertas
+                    .map(
+                        (a) => `
+                    <tr>
+                        <td>${enlaceHistorial(a.animalId, a.animalNombre)}</td>
+                        <td>${escaparHtml(a.adoptanteNombre)}</td>
+                        <td>${formatearFecha(a.fechaAdopcion)}</td>
+                        <td><span class="etiqueta etiqueta-peligro">${formatearFecha(a.fechaLimiteCastracion)}</span></td>
+                        <td>${diasDesde(a.fechaLimiteCastracion)} días</td>
+                        <td class="acciones">
+                            <a class="boton boton-secundario boton-chico" href="historial.html?animalId=${a.animalId}">Ver historial</a>
+                            <a class="boton boton-chico" href="castraciones.html">Registrar castración</a>
+                        </td>
+                    </tr>`
+                    )
+                    .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function diasDesde(iso) {
+            const [anio, mes, dia] = iso.split("-").map(Number);
+            const limite = new Date(anio, mes - 1, dia);
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            return Math.round((hoy - limite) / 86400000);
+        }
+
+        function mostrarError(mensaje) {
+            const elemento = document.getElementById("mensaje-error");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+    </script>
+</body>
+</html>

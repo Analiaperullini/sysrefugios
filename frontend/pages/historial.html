@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Historial del animal</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <header id="encabezado" class="encabezado"></header>
+
+    <main class="contenedor">
+        <div class="barra-herramientas">
+            <h1>Historial del animal</h1>
+        </div>
+
+        <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+
+        <div class="tarjeta">
+            <form id="formulario-buscar">
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="animalId">Animal</label>
+                        <select id="animalId"></select>
+                    </div>
+                </div>
+                <label class="casilla">
+                    <input type="checkbox" id="casilla-todas">
+                    Incluir animales de todas las organizaciones
+                </label>
+            </form>
+        </div>
+
+        <section id="tarjeta-animal" class="tarjeta" hidden>
+            <h2 id="animal-nombre" style="margin-top:0;"></h2>
+            <p id="animal-datos" class="subtitulo" style="margin-top:0;"></p>
+            <div id="animal-aviso" class="alerta alerta-aviso" hidden></div>
+        </section>
+
+        <section id="tarjeta-eventos" class="tarjeta" hidden>
+            <p class="subtitulo" style="margin-top:0;">
+                Todos los registros del animal en orden cronológico. Los registros dados de baja se muestran
+                tachados y marcados.
+            </p>
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Evento</th>
+                            <th>Detalle</th>
+                            <th>Organización</th>
+                            <th>Registro</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-eventos"></tbody>
+                </table>
+                <p id="eventos-vacios" class="vacio" hidden>El animal no tiene eventos registrados.</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/etiquetas.js"></script>
+    <script>
+        const sesion = inicializarPagina("historial.html");
+        const selectorAnimal = document.getElementById("animalId");
+
+        if (sesion) {
+            iniciar();
+        }
+
+        async function iniciar() {
+            const idInicial = new URLSearchParams(window.location.search).get("animalId");
+            document.getElementById("casilla-todas").checked = Boolean(idInicial);
+            await cargarAnimales(idInicial);
+            if (selectorAnimal.value) {
+                await cargarHistorial(selectorAnimal.value);
+            }
+        }
+
+        async function cargarAnimales(idSeleccionado) {
+            try {
+                const todas = document.getElementById("casilla-todas").checked;
+                const consulta = todas ? "" : `?organizacionId=${sesion.organizacionId}`;
+                const animales = await api.get(`/animales${consulta}`);
+                selectorAnimal.innerHTML =
+                    `<option value="">Elegí un animal...</option>` +
+                    animales
+                        .map((a) => `<option value="${a.id}">${escaparHtml(a.nombre)} (${escaparHtml(a.organizacionNombre)})</option>`)
+                        .join("");
+                if (idSeleccionado) {
+                    selectorAnimal.value = idSeleccionado;
+                    if (selectorAnimal.value !== String(idSeleccionado)) {
+                        selectorAnimal.insertAdjacentHTML("beforeend", `<option value="${Number(idSeleccionado)}">Animal ${Number(idSeleccionado)} (dado de baja)</option>`);
+                        selectorAnimal.value = idSeleccionado;
+                    }
+                }
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function cargarHistorial(animalId) {
+            ocultarError();
+            try {
+                const historial = await api.get(`/animales/${animalId}/historial`);
+                const a = historial.animal;
+                document.getElementById("animal-nombre").textContent = a.nombre;
+                document.getElementById("animal-datos").textContent = [
+                    a.especie,
+                    a.color,
+                    a.sexo,
+                    etiqueta(ETAPAS_VIDA, a.etapaVida),
+                    etiqueta(TAMANIOS, a.tamanio),
+                    `Estado: ${etiqueta(ESTADOS_ANIMAL, a.estado)}`,
+                    `A cargo de: ${a.organizacionNombre}`,
+                ]
+                    .filter(Boolean)
+                    .join(" · ");
+                const aviso = document.getElementById("animal-aviso");
+                aviso.textContent = a.avisoDerivacion ?? "";
+                aviso.hidden = !a.avisoDerivacion;
+                document.getElementById("tarjeta-animal").hidden = false;
+
+                document.getElementById("eventos-vacios").hidden = historial.eventos.length > 0;
+                document.getElementById("cuerpo-eventos").innerHTML = historial.eventos
+                    .map(
+                        (e) => `
+                    <tr class="${e.activo ? "" : "fila-baja"}">
+                        <td>${formatearFecha(e.fecha)}</td>
+                        <td><span class="etiqueta">${etiqueta(TIPOS_EVENTO, e.tipo)}</span></td>
+                        <td>
+                            <div class="descripcion-evento">${escaparHtml(e.descripcion)}</div>
+                            <ul class="detalles-evento">${e.detalles.map((d) => d.startsWith("ALERTA") ? `<li class="detalle-alerta">${escaparHtml(d)}</li>` : `<li>${escaparHtml(d)}</li>`).join("")}</ul>
+                        </td>
+                        <td>${escaparHtml(e.organizacionNombre)}</td>
+                        <td>${e.activo ? `<span class="etiqueta etiqueta-exito">Activo</span>` : `<span class="etiqueta etiqueta-peligro">Dado de baja</span>`}</td>
+                    </tr>`
+                    )
+                    .join("");
+                document.getElementById("tarjeta-eventos").hidden = false;
+                history.replaceState(null, "", `historial.html?animalId=${animalId}`);
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        selectorAnimal.addEventListener("change", () => {
+            if (selectorAnimal.value) {
+                cargarHistorial(selectorAnimal.value);
+            } else {
+                document.getElementById("tarjeta-animal").hidden = true;
+                document.getElementById("tarjeta-eventos").hidden = true;
+            }
+        });
+
+        document.getElementById("casilla-todas").addEventListener("change", () => cargarAnimales(selectorAnimal.value));
+
+        function mostrarError(mensaje) {
+            const elemento = document.getElementById("mensaje-error");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+
+        function ocultarError() {
+            document.getElementById("mensaje-error").hidden = true;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Campañas de castración</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <header id="encabezado" class="encabezado"></header>
+
+    <main class="contenedor">
+        <div class="barra-herramientas">
+            <h1>Campañas de castración</h1>
+            <button id="boton-nuevo" class="boton" type="button">Nueva campaña</button>
+        </div>
+        <p class="subtitulo" style="margin-top:0;">
+            Cada campaña tiene una cantidad máxima de cupos: no se puede asignar un animal si ya están todos ocupados.
+        </p>
+
+        <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+        <div id="mensaje-exito" class="alerta alerta-exito" hidden></div>
+
+        <section id="tarjeta-formulario" class="tarjeta" hidden>
+            <h2 id="titulo-formulario" style="margin-top:0;">Nueva campaña</h2>
+            <form id="formulario-campania">
+                <input type="hidden" id="campaniaId">
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="nombre">Nombre *</label>
+                        <input type="text" id="nombre" required>
+                    </div>
+                    <div class="campo">
+                        <label for="fecha">Fecha *</label>
+                        <input type="date" id="fecha" required>
+                    </div>
+                </div>
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="lugar">Lugar</label>
+                        <input type="text" id="lugar">
+                    </div>
+                    <div class="campo">
+                        <label for="cantidadCupos">Cantidad de cupos *</label>
+                        <input type="number" id="cantidadCupos" min="1" required>
+                    </div>
+                    <div class="campo">
+                        <label for="estado">Estado</label>
+                        <select id="estado"></select>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label for="descripcion">Descripción</label>
+                    <textarea id="descripcion"></textarea>
+                </div>
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Guardar</button>
+                    <button type="button" id="boton-cancelar" class="boton boton-secundario">Cancelar</button>
+                </div>
+            </form>
+        </section>
+
+        <div class="tarjeta">
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Campaña</th>
+                            <th>Fecha</th>
+                            <th>Lugar</th>
+                            <th>Organización</th>
+                            <th>Estado</th>
+                            <th>Cupos</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-tabla"></tbody>
+                </table>
+                <p id="tabla-vacia" class="vacio" hidden>No hay campañas registradas todavía.</p>
+            </div>
+        </div>
+
+        <section id="tarjeta-asignaciones" class="tarjeta" hidden>
+            <h2 id="titulo-asignaciones" style="margin-top:0;"></h2>
+            <p id="cupos-asignaciones" class="subtitulo" style="margin-top:0;"></p>
+
+            <form id="formulario-asignar">
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="animalId">Animal a asignar</label>
+                        <select id="animalId" required></select>
+                    </div>
+                    <div class="campo">
+                        <label for="observacionesAsignacion">Observaciones</label>
+                        <input type="text" id="observacionesAsignacion">
+                    </div>
+                </div>
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Asignar cupo</button>
+                </div>
+            </form>
+
+            <form id="formulario-veterinario">
+                <div class="campo">
+                    <label for="veterinario">Veterinario que realiza las castraciones</label>
+                    <input type="text" id="veterinario" maxlength="150">
+                    <span class="ayuda">Se registra en la castración al marcar una asignación como realizada.</span>
+                </div>
+            </form>
+
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Animal</th>
+                            <th>Asignado el</th>
+                            <th>Estado</th>
+                            <th>Observaciones</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-asignaciones"></tbody>
+                </table>
+                <p id="asignaciones-vacias" class="vacio" hidden>Todavía no hay animales asignados.</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/etiquetas.js"></script>
+    <script>
+        const sesion = inicializarPagina("campanias.html");
+        let campaniaAbierta = null;
+
+        if (sesion) {
+            document.getElementById("estado").innerHTML = opcionesSelector(ESTADOS_CAMPANIA);
+            cargarTabla();
+        }
+
+        function esPropia(campania) {
+            return campania.organizacionId === sesion.organizacionId;
+        }
+
+        async function cargarTabla() {
+            try {
+                const campanias = await api.get("/campanias-castracion");
+                document.getElementById("tabla-vacia").hidden = campanias.length > 0;
+                document.getElementById("cuerpo-tabla").innerHTML = campanias
+                    .map((c) => {
+                        const llena = c.cuposUsados >= c.cantidadCupos;
+                        return `
+                    <tr>
+                        <td>${escaparHtml(c.nombre)}</td>
+                        <td>${formatearFecha(c.fecha)}</td>
+                        <td>${escaparHtml(c.lugar)}</td>
+                        <td>${escaparHtml(c.organizacionNombre)}</td>
+                        <td>${etiqueta(ESTADOS_CAMPANIA, c.estado)}</td>
+                        <td><span class="etiqueta ${llena ? "etiqueta-peligro" : "etiqueta-exito"}">${c.cuposUsados} / ${c.cantidadCupos}</span></td>
+                        <td class="acciones">
+                            <button class="boton boton-secundario boton-chico" onclick="verAsignaciones(${c.id})" type="button">Asignaciones</button>
+                            ${esPropia(c) ? `<button class="boton boton-secundario boton-chico" onclick="editar(${c.id})" type="button">Editar</button>` : ""}
+                        </td>
+                    </tr>`;
+                    })
+                    .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function verAsignaciones(id) {
+            ocultarMensajes();
+            try {
+                const [campania, asignaciones] = await Promise.all([
+                    api.get(`/campanias-castracion/${id}`),
+                    api.get(`/campanias-castracion/${id}/asignaciones`),
+                ]);
+                campaniaAbierta = campania;
+                const propia = esPropia(campania);
+                document.getElementById("titulo-asignaciones").textContent = `Asignaciones: ${campania.nombre}`;
+                document.getElementById("cupos-asignaciones").textContent =
+                    `Cupos usados: ${campania.cuposUsados} de ${campania.cantidadCupos} · ${formatearFecha(campania.fecha)} · ${campania.organizacionNombre}`;
+
+                const puedeAsignar = propia && campania.estado !== "FINALIZADA";
+                document.getElementById("formulario-asignar").hidden = !puedeAsignar;
+                document.getElementById("formulario-veterinario").hidden = !propia;
+                if (puedeAsignar) {
+                    const asignados = new Set(asignaciones.filter((a) => a.estado !== "CANCELADA").map((a) => a.animalId));
+                    const animales = await api.get(`/animales?organizacionId=${sesion.organizacionId}`);
+                    const disponibles = animales.filter((a) => !asignados.has(a.id));
+                    document.getElementById("animalId").innerHTML = disponibles.length
+                        ? disponibles.map((a) => `<option value="${a.id}">${escaparHtml(a.nombre)} (${etiqueta(ESTADOS_ANIMAL, a.estado)})</option>`).join("")
+                        : `<option value="">No hay animales para asignar</option>`;
+                }
+
+                document.getElementById("asignaciones-vacias").hidden = asignaciones.length > 0;
+                document.getElementById("cuerpo-asignaciones").innerHTML = asignaciones
+                    .map(
+                        (a) => `
+                    <tr class="${a.estado === "CANCELADA" ? "fila-baja" : ""}">
+                        <td>${enlaceHistorial(a.animalId, a.animalNombre)}</td>
+                        <td>${formatearFecha(a.fechaAsignacion)}</td>
+                        <td>${etiqueta(ESTADOS_ASIGNACION, a.estado)}</td>
+                        <td>${escaparHtml(a.observaciones)}</td>
+                        <td class="acciones">
+                            ${propia && a.estado === "ASIGNADA"
+                                ? `<button class="boton boton-chico" onclick="cambiarEstado(${a.id}, 'REALIZADA')" type="button">Marcar realizada</button>
+                                   <button class="boton boton-peligro boton-chico" onclick="cambiarEstado(${a.id}, 'CANCELADA')" type="button">Cancelar</button>`
+                                : ""}
+                        </td>
+                    </tr>`
+                    )
+                    .join("");
+                document.getElementById("tarjeta-asignaciones").hidden = false;
+                document.getElementById("tarjeta-asignaciones").scrollIntoView({ behavior: "smooth" });
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        document.getElementById("formulario-asignar").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            ocultarMensajes();
+            try {
+                const asignacion = await api.post(`/campanias-castracion/${campaniaAbierta.id}/asignaciones`, {
+                    animalId: Number(document.getElementById("animalId").value) || null,
+                    observaciones: document.getElementById("observacionesAsignacion").value.trim() || null,
+                });
+                document.getElementById("observacionesAsignacion").value = "";
+                await cargarTabla();
+                await verAsignaciones(campaniaAbierta.id);
+                mostrarExito(`Se asignó un cupo de la campaña a ${asignacion.animalNombre}.`);
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        async function cambiarEstado(id, estado) {
+            ocultarMensajes();
+            try {
+                const asignacion = await api.put(`/asignaciones-castracion/${id}`, {
+                    estado,
+                    veterinario: document.getElementById("veterinario").value.trim() || null,
+                });
+                await cargarTabla();
+                await verAsignaciones(campaniaAbierta.id);
+                mostrarExito(estado === "REALIZADA"
+                    ? `Castración de ${asignacion.animalNombre} registrada.`
+                    : `Asignación de ${asignacion.animalNombre} cancelada: el cupo quedó libre.`);
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        document.getElementById("boton-nuevo").addEventListener("click", () => {
+            ocultarMensajes();
+            document.getElementById("formulario-campania").reset();
+            document.getElementById("campaniaId").value = "";
+            document.getElementById("estado").value = "PROGRAMADA";
+            mostrarFormulario("Nueva campaña");
+        });
+
+        document.getElementById("boton-cancelar").addEventListener("click", () => {
+            document.getElementById("tarjeta-formulario").hidden = true;
+        });
+
+        document.getElementById("formulario-campania").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            ocultarMensajes();
+            const datos = {
+                nombre: document.getElementById("nombre").value.trim(),
+                fecha: document.getElementById("fecha").value,
+                lugar: document.getElementById("lugar").value.trim() || null,
+                cantidadCupos: Number(document.getElementById("cantidadCupos").value),
+                descripcion: document.getElementById("descripcion").value.trim() || null,
+                estado: document.getElementById("estado").value,
+            };
+            const id = document.getElementById("campaniaId").value;
+            try {
+                if (id) {
+                    await api.put(`/campanias-castracion/${id}`, datos);
+                    mostrarExito("Campaña actualizada correctamente.");
+                } else {
+                    await api.post("/campanias-castracion", datos);
+                    mostrarExito("Campaña registrada correctamente.");
+                }
+                document.getElementById("tarjeta-formulario").hidden = true;
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        async function editar(id) {
+            ocultarMensajes();
+            try {
+                const c = await api.get(`/campanias-castracion/${id}`);
+                document.getElementById("campaniaId").value = c.id;
+                document.getElementById("nombre").value = c.nombre;
+                document.getElementById("fecha").value = c.fecha;
+                document.getElementById("lugar").value = c.lugar ?? "";
+                document.getElementById("cantidadCupos").value = c.cantidadCupos;
+                document.getElementById("descripcion").value = c.descripcion ?? "";
+                document.getElementById("estado").value = c.estado;
+                mostrarFormulario("Editar campaña");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function mostrarFormulario(titulo) {
+            document.getElementById("titulo-formulario").textContent = titulo;
+            document.getElementById("tarjeta-formulario").hidden = false;
+            document.getElementById("tarjeta-formulario").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function mostrarError(mensaje) {
+            const elemento = document.getElementById("mensaje-error");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+            elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        function mostrarExito(mensaje) {
+            const elemento = document.getElementById("mensaje-exito");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+
+        function ocultarMensajes() {
+            document.getElementById("mensaje-error").hidden = true;
+            document.getElementById("mensaje-exito").hidden = true;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Ingresar</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="contenedor-angosto">
+        <div class="tarjeta">
+            <h1 style="margin-top:0;">SysRefugios</h1>
+            <p class="subtitulo" style="margin-top:0;">
+                Sistema interno de gestión para organizaciones de protección animal.
+            </p>
+
+            <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+
+            <form id="formulario-ingreso">
+                <div class="campo">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" autocomplete="username" required autofocus>
+                </div>
+                <div class="campo">
+                    <label for="contrasena">Contraseña</label>
+                    <input type="password" id="contrasena" name="contrasena" autocomplete="current-password" required>
+                </div>
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Ingresar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        const formulario = document.getElementById("formulario-ingreso");
+        const mensajeError = document.getElementById("mensaje-error");
+
+        if (new URLSearchParams(window.location.search).has("expirada")) {
+            mensajeError.textContent = "La sesión se cerró por 30 minutos sin actividad. Vuelva a ingresar.";
+            mensajeError.hidden = false;
+        } else if (obtenerSesion()) {
+            window.location.href = "pages/inicio.html";
+        }
+
+        formulario.addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            mensajeError.hidden = true;
+
+            const datos = {
+                email: document.getElementById("email").value.trim(),
+                contrasena: document.getElementById("contrasena").value,
+            };
+
+            try {
+                const usuario = await api.post("/login", datos);
+                guardarSesion(usuario);
+                window.location.href = usuario.cambioObligatorio
+                    ? "pages/cambiar-contrasena.html"
+                    : "pages/inicio.html";
+            } catch (error) {
+                mensajeError.textContent = error.message;
+                mensajeError.hidden = false;
+            }
+        });
+    </script>
+</body>
+</html>

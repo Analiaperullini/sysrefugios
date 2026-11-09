@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SysRefugios - Rescates</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <header id="encabezado" class="encabezado"></header>
+
+    <main class="contenedor">
+        <div class="barra-herramientas">
+            <h1>Rescates</h1>
+            <button id="boton-nuevo" class="boton" type="button">Registrar ingreso</button>
+        </div>
+
+        <div id="mensaje-error" class="alerta alerta-error" hidden></div>
+        <div id="mensaje-exito" class="alerta alerta-exito" hidden></div>
+        <div id="mensaje-aviso" class="alerta alerta-aviso" hidden></div>
+
+        <section id="tarjeta-formulario" class="tarjeta" hidden>
+            <h2 id="titulo-formulario" style="margin-top:0;">Registrar ingreso</h2>
+            <form id="formulario-rescate">
+                <input type="hidden" id="rescateId">
+
+                <fieldset id="grupo-animal">
+                    <legend>Animal que ingresa</legend>
+                    <div class="fila-campos">
+                        <div class="campo">
+                            <label for="nombre">Nombre *</label>
+                            <input type="text" id="nombre">
+                        </div>
+                        <div class="campo">
+                            <label for="especie">Especie *</label>
+                            <input type="text" id="especie" placeholder="Perro, Gato...">
+                        </div>
+                        <div class="campo">
+                            <label for="color">Color</label>
+                            <input type="text" id="color" maxlength="50">
+                        </div>
+                    </div>
+                    <div class="fila-campos">
+                        <div class="campo">
+                            <label for="sexo">Sexo</label>
+                            <select id="sexo">
+                                <option value="">Sin especificar</option>
+                                <option value="Macho">Macho</option>
+                                <option value="Hembra">Hembra</option>
+                            </select>
+                        </div>
+                        <div class="campo">
+                            <label for="fechaNacimiento">Fecha de nacimiento (aproximada)</label>
+                            <input type="date" id="fechaNacimiento">
+                        </div>
+                        <div class="campo">
+                            <label for="etapaVida">Etapa de vida *</label>
+                            <select id="etapaVida"></select>
+                        </div>
+                        <div class="campo">
+                            <label for="tamanio">Tamaño</label>
+                            <select id="tamanio"></select>
+                        </div>
+                    </div>
+                    <div class="campo">
+                        <label for="descripcionAnimal">Descripción del animal</label>
+                        <textarea id="descripcionAnimal"></textarea>
+                    </div>
+                    <label id="grupo-alimentacion" class="casilla" hidden>
+                        <input type="checkbox" id="confirmaAlimentacionAutonoma">
+                        Confirmo que el cachorro ya puede alimentarse solo
+                    </label>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Rescate</legend>
+                    <div class="fila-campos">
+                        <div class="campo">
+                            <label for="fecha">Fecha *</label>
+                            <input type="date" id="fecha" required>
+                        </div>
+                        <div class="campo">
+                            <label for="organizacionId">Organización que recibe *</label>
+                            <select id="organizacionId" required></select>
+                        </div>
+                        <div class="campo" id="grupo-estado" hidden>
+                            <label for="estado">Estado del rescate</label>
+                            <select id="estado"></select>
+                        </div>
+                    </div>
+                    <div class="campo">
+                        <label for="lugar">Lugar</label>
+                        <input type="text" id="lugar">
+                    </div>
+                    <div class="campo">
+                        <label for="descripcion">Descripción del rescate</label>
+                        <textarea id="descripcion"></textarea>
+                    </div>
+                    <div class="campo">
+                        <label for="observaciones">Observaciones</label>
+                        <textarea id="observaciones"></textarea>
+                    </div>
+                </fieldset>
+
+                <fieldset id="grupo-espacio">
+                    <legend>Espacio de tránsito</legend>
+                    <div class="campo">
+                        <label for="espacioTransitoId">Espacio</label>
+                        <select id="espacioTransitoId"></select>
+                        <span class="ayuda">Si elegís un espacio, el animal queda en tránsito desde la fecha del rescate.</span>
+                    </div>
+                </fieldset>
+
+                <div id="aviso-previo" class="alerta alerta-aviso" hidden></div>
+
+                <div class="acciones-formulario">
+                    <button type="submit" class="boton">Guardar</button>
+                    <button type="button" id="boton-cancelar" class="boton boton-secundario">Cancelar</button>
+                </div>
+            </form>
+        </section>
+
+        <div class="tarjeta">
+            <div class="tabla-contenedor">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Animal</th>
+                            <th>Fecha</th>
+                            <th>Lugar</th>
+                            <th>Organización</th>
+                            <th>Estado</th>
+                            <th>Responsable</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpo-tabla"></tbody>
+                </table>
+                <p id="tabla-vacia" class="vacio" hidden>No hay rescates registrados todavía.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/etiquetas.js"></script>
+    <script>
+        const sesion = inicializarPagina("rescates.html");
+        let organizaciones = [];
+
+        if (sesion) {
+            iniciar();
+        }
+
+        async function iniciar() {
+            document.getElementById("etapaVida").innerHTML = opcionesSelector(ETAPAS_VIDA, "Elegí...");
+            document.getElementById("tamanio").innerHTML = opcionesSelector(TAMANIOS, "Sin especificar");
+            document.getElementById("estado").innerHTML = opcionesSelector(ESTADOS_RESCATE);
+            try {
+                organizaciones = await api.get("/organizaciones");
+                document.getElementById("organizacionId").innerHTML = organizaciones
+                    .map((o) => `<option value="${o.id}">${escaparHtml(o.nombre)}</option>`)
+                    .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+            await cargarTabla();
+        }
+
+        async function cargarEspacios() {
+            const organizacionId = document.getElementById("organizacionId").value;
+            const selector = document.getElementById("espacioTransitoId");
+            try {
+                const espacios = await api.get(`/espacios-transito?organizacionId=${organizacionId}`);
+                selector.innerHTML =
+                    `<option value="">Sin espacio de tránsito por ahora</option>` +
+                    espacios
+                        .map((e) => {
+                            const lleno = e.ocupacion >= e.capacidad || e.estado !== "ACTIVO";
+                            return `<option value="${e.id}">${escaparHtml(e.nombre)} (${e.ocupacion} / ${e.capacidad})${lleno ? " - sin lugar" : ""}</option>`;
+                        })
+                        .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function cargarTabla() {
+            try {
+                const rescates = await api.get("/rescates");
+                document.getElementById("tabla-vacia").hidden = rescates.length > 0;
+                document.getElementById("cuerpo-tabla").innerHTML = rescates
+                    .map(
+                        (r) => `
+                    <tr>
+                        <td>
+                            ${enlaceHistorial(r.animalId, r.animalNombre)}
+                            ${r.avisoDerivacion ? `<br><span class="etiqueta etiqueta-aviso" title="${escaparHtml(r.avisoDerivacion)}">Debe derivarse</span>` : ""}
+                        </td>
+                        <td>${formatearFecha(r.fechaRescate)}</td>
+                        <td>${escaparHtml(r.lugar)}</td>
+                        <td>${escaparHtml(r.organizacionNombre)}</td>
+                        <td>${etiqueta(ESTADOS_RESCATE, r.estado)}</td>
+                        <td>${escaparHtml(r.usuarioNombre)}</td>
+                        <td class="acciones">
+                            <button class="boton boton-secundario boton-chico" onclick="editar(${r.id})" type="button">Editar</button>
+                            <button class="boton boton-peligro boton-chico" onclick="darDeBaja(${r.id})" type="button">Dar de baja</button>
+                        </td>
+                    </tr>`
+                    )
+                    .join("");
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function actualizarSegunEtapa() {
+            const etapa = document.getElementById("etapaVida").value;
+            const esCachorro = etapa === "CACHORRO";
+            document.getElementById("grupo-alimentacion").hidden = !esCachorro;
+            if (!esCachorro) {
+                document.getElementById("confirmaAlimentacionAutonoma").checked = false;
+            }
+
+            const organizacion = organizaciones.find((o) => String(o.id) === document.getElementById("organizacionId").value);
+            const aviso = document.getElementById("aviso-previo");
+            if (etapa && organizacion?.etapaVidaAtendida && organizacion.etapaVidaAtendida !== etapa) {
+                const destino = organizaciones.find((o) => o.etapaVidaAtendida === etapa);
+                aviso.textContent = `Atención: ${organizacion.nombre} recibe ${etiqueta(ETAPAS_VIDA, organizacion.etapaVidaAtendida).toLowerCase()}s. `
+                    + `Este animal corresponde a ${destino ? destino.nombre : "la otra organización"} y debe derivarse. Podés registrar el ingreso igual.`;
+                aviso.hidden = false;
+            } else {
+                aviso.hidden = true;
+            }
+        }
+
+        document.getElementById("etapaVida").addEventListener("change", actualizarSegunEtapa);
+        document.getElementById("organizacionId").addEventListener("change", () => {
+            actualizarSegunEtapa();
+            if (!document.getElementById("rescateId").value) {
+                cargarEspacios();
+            }
+        });
+
+        document.getElementById("boton-nuevo").addEventListener("click", async () => {
+            resetearFormulario();
+            await cargarEspacios();
+            mostrarFormulario("Registrar ingreso");
+        });
+
+        document.getElementById("boton-cancelar").addEventListener("click", ocultarFormulario);
+
+        document.getElementById("formulario-rescate").addEventListener("submit", async (evento) => {
+            evento.preventDefault();
+            ocultarMensajes();
+
+            const id = document.getElementById("rescateId").value;
+            const datos = {
+                fechaRescate: document.getElementById("fecha").value,
+                lugar: document.getElementById("lugar").value.trim() || null,
+                descripcion: document.getElementById("descripcion").value.trim() || null,
+                observaciones: document.getElementById("observaciones").value.trim() || null,
+                organizacionId: Number(document.getElementById("organizacionId").value),
+            };
+
+            try {
+                if (id) {
+                    datos.estado = document.getElementById("estado").value;
+                    await api.put(`/rescates/${id}`, datos);
+                    mostrarExito("Rescate actualizado correctamente.");
+                } else {
+                    datos.animal = {
+                        nombre: document.getElementById("nombre").value.trim(),
+                        especie: document.getElementById("especie").value.trim(),
+                        sexo: document.getElementById("sexo").value || null,
+                        fechaNacimiento: document.getElementById("fechaNacimiento").value || null,
+                        color: document.getElementById("color").value.trim() || null,
+                        etapaVida: document.getElementById("etapaVida").value || null,
+                        tamanio: document.getElementById("tamanio").value || null,
+                        descripcion: document.getElementById("descripcionAnimal").value.trim() || null,
+                    };
+                    datos.confirmaAlimentacionAutonoma = document.getElementById("confirmaAlimentacionAutonoma").checked;
+                    const espacio = document.getElementById("espacioTransitoId").value;
+                    datos.espacioTransitoId = espacio ? Number(espacio) : null;
+                    const rescate = await api.post("/rescates", datos);
+                    mostrarExito(espacio
+                        ? "Ingreso registrado: animal, rescate y tránsito guardados."
+                        : "Ingreso registrado: animal y rescate guardados.");
+                    mostrarAviso(rescate.avisoDerivacion);
+                }
+                ocultarFormulario();
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        });
+
+        async function editar(id) {
+            ocultarMensajes();
+            try {
+                const r = await api.get(`/rescates/${id}`);
+                resetearFormulario();
+                document.getElementById("rescateId").value = r.id;
+                document.getElementById("fecha").value = r.fechaRescate;
+                document.getElementById("observaciones").value = r.observaciones ?? "";
+                document.getElementById("lugar").value = r.lugar ?? "";
+                document.getElementById("descripcion").value = r.descripcion ?? "";
+                document.getElementById("organizacionId").value = r.organizacionId;
+                document.getElementById("estado").value = r.estado;
+                document.getElementById("grupo-animal").hidden = true;
+                document.getElementById("grupo-espacio").hidden = true;
+                document.getElementById("grupo-estado").hidden = false;
+                mostrarFormulario(`Editar rescate de ${r.animalNombre}`);
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        async function darDeBaja(id) {
+            if (!confirm("¿Dar de baja este rescate? Se conserva en el historial del animal.")) {
+                return;
+            }
+            ocultarMensajes();
+            try {
+                await api.del(`/rescates/${id}`);
+                mostrarExito("Rescate dado de baja.");
+                await cargarTabla();
+            } catch (error) {
+                mostrarError(error.message);
+            }
+        }
+
+        function resetearFormulario() {
+            document.getElementById("formulario-rescate").reset();
+            document.getElementById("rescateId").value = "";
+            document.getElementById("fecha").value = hoyIso();
+            document.getElementById("organizacionId").value = sesion.organizacionId;
+            document.getElementById("grupo-animal").hidden = false;
+            document.getElementById("grupo-espacio").hidden = false;
+            document.getElementById("grupo-estado").hidden = true;
+            actualizarSegunEtapa();
+        }
+
+        function mostrarFormulario(titulo) {
+            document.getElementById("titulo-formulario").textContent = titulo;
+            document.getElementById("tarjeta-formulario").hidden = false;
+            document.getElementById("tarjeta-formulario").scrollIntoView({ behavior: "smooth" });
+        }
+
+        function ocultarFormulario() {
+            document.getElementById("tarjeta-formulario").hidden = true;
+        }
+
+        function mostrarError(mensaje) {
+            const elemento = document.getElementById("mensaje-error");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+            elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+
+        function mostrarExito(mensaje) {
+            const elemento = document.getElementById("mensaje-exito");
+            elemento.textContent = mensaje;
+            elemento.hidden = false;
+        }
+
+        function mostrarAviso(mensaje) {
+            const elemento = document.getElementById("mensaje-aviso");
+            elemento.textContent = mensaje ?? "";
+            elemento.hidden = !mensaje;
+        }
+
+        function ocultarMensajes() {
+            ["mensaje-error", "mensaje-exito", "mensaje-aviso"].forEach((id) => (document.getElementById(id).hidden = true));
+        }
+    </script>
+</body>
+</html>
